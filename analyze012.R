@@ -160,15 +160,9 @@ plot(countiesWithMandersHexcolors, col=rgb(countiesWithMandersHexcolors$col, max
 ###### Now calculate the allele frequences in each hex through time ######
 
 
-
-# Create the hex overlay grid:
-manderCountiesUTMDissolvedHex <- make_grid(manderCountiesUTMDissolved, cell_area = 2500, clip=TRUE)
-# Make sure we don't have any points outside of grid:
 overlappingPoints <- genotypeWithLatLongUTM[!is.na(sp::over(genotypeWithLatLongUTM,as(manderCountiesUTMDissolved,"SpatialPolygons"))),]
 
-# We'll use this to color points
-rbPal <- colorRamp(c('red','blue'), space = "Lab") # needed to color points based on 0 to 1 values
-
+# Use the same hex overlay grid and points: manderCountiesUTMDissolvedHex and overlappingPoints
 hexSubset <- manderCountiesUTMDissolvedHex[unique(sp::over(overlappingPoints, manderCountiesUTMDissolvedHex)),]
 
 agBTS <- over(hexSubset, overlappingPoints, returnList = TRUE)
@@ -181,7 +175,7 @@ agBTShexChar <- mutate(agBTShex,id = as.character(id))
 # the sampling period (eg 1986:2015 or 1986:2016)
 
 # Set it up like array[hexagonID][locusID][year]
-freqThroughTimeArray <- array(dim=c(length(unique(agBTShexChar$id)), length(3:(ncol(hexFrameYear)-1)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), colnames(hexFrameYear)[3:(ncol(hexFrameYear)-1)], min(agBTShexChar$Year):max(agBTShexChar$Year)))
+freqThroughTimeArray <- array(dim=c(length(unique(agBTShexChar$id)), length(3:(ncol(agBTShexChar)-2)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), colnames(agBTShexChar)[3:(ncol(agBTShexChar)-2)], min(agBTShexChar$Year):max(agBTShexChar$Year)))
   
   
   
@@ -193,8 +187,8 @@ for (hexID in 1:length(hexIDs)) {
    # Now we have to calculate the allele frequency for each year and store it in a vector:
    for (year in 1:length(1986:2015)) {
      hexFrameYear <- hexFrame[hexFrame$Year==(1985+year),] # The earliest year minus 1 plus the "year" counter
-     for (allele in 1:(ncol(hexFrameYear)-3)) {
-       alleleCounter = allele+2 # The first two columns are not data
+     for (allele in 1:(ncol(hexFrameYear)-4)) {
+         alleleCounter = allele+2 # The first two columns are not data
        # The first column is the hexagon id, the second is sample ID, the third is the first
        # genotype column, the second to last is the last genotype column, and the last is the year
        if (length(hexFrameYear[,alleleCounter]) == 0) {
