@@ -1,3 +1,10 @@
+# When a hexagon is clicked on, we want to display the following things:
+# 1) A barplot of samples from across those years (xvalues=1986:2016, yvalues=numSamples)
+# 2) A lineplot where the allele frequencies through time are displayed, with potential BTS alleles in color and 
+#    suspected native alleles shown in grey
+# 3) Some measure of genotyping uncertainty (?)
+
+
 setwd("~/Box Sync/UCLA/Research/Papers/CTS_HybEx/pondsThroughTime/")
 
 ##### LIBRARIES #####
@@ -15,27 +22,6 @@ library(gridExtra)
 library(rasterVis)
 library(rnaturalearth)
 
-
-genotypes <- read.csv("HSEM031-040_and_HSET01.SNPs.sr.q30.passOnly.minGQ20maxMiss50p.erinRename.hasMeta.oneHeaderLine.noSampsOver50pmissing.012", header=F, sep="\t", row.names=1)
-
-# Shorten it up just for testing:
-genotypes <- genotypes[,1:1000] # Shorten it up just for testing:
-
-individuals <- read.csv("HSEM031-040_and_HSET01.SNPs.sr.q30.passOnly.minGQ20maxMiss50p.erinRename.hasMeta.oneHeaderLine.noSampsOver50pmissing.012.indv", header=F)
-loci <- read.csv("HSEM031-040_and_HSET01.SNPs.sr.q30.passOnly.minGQ20maxMiss50p.erinRename.hasMeta.oneHeaderLine.noSampsOver50pmissing.012.pos", header=F)
-
-# Shorten up just for testing:
-loci <- loci$V1[1:10000]
-
-colnames(genotypes) <- loci
-row.names(genotypes) <- individuals$V1
-metaz <- read.csv("allMetaData", sep="\t", header=T)
-genotypeWithLatLong <- merge(genotypes, metaz, by.x=0, by.y="Individual")
-genotypeWithLatLong$Long <- abs(genotypeWithLatLong$Long) * -1 # Make sure that the longitudes are negative
-# Project the samples to UTM:
-coordinates(genotypeWithLatLong) <- c("Long", "Lat")
-proj4string(genotypeWithLatLong) <- CRS("+proj=longlat +datum=WGS84")
-genotypeWithLatLongUTM <- spTransform(genotypeWithLatLong, CRS("+proj=utm +zone=10 +datum=WGS84 +units=km +no_defs"))
 
 ##### FUNCTIONS #####
 make_grid <- function(x, cell_diameter, cell_area, clip = FALSE) {
@@ -64,54 +50,11 @@ make_grid <- function(x, cell_diameter, cell_area, clip = FALSE) {
   return(g)
 }
 
-alleleFreqThroughTime <- function(hexGrid, pointsLayer) {
-  rbPal <- colorRamp(c('red','blue'), space = "Lab") # needed to color points based on 0 to 1 values
-  
-  hexSubset <- hexGrid[unique(sp::over(pointsLayer, hexGrid)),]
-  
-  agBTS <- over(hexSubset, pointsLayer, returnList = TRUE)
-  agBTShex <- plyr::ldply(agBTS, .fun=function(x) x, .id="id") # Assign the hexagon ID to each observation
-  agBTShexChar <- mutate(agBTShex,id = as.character(id))
-  # Now take all the agBTShex hexagons and aggregate based on id values
-  aveAgBTShexes <- aggregate(PercBTS ~ id, data=agBTShexChar, FUN=mean) # Just take the mean of all the values in the hexagon
-  aveAgBTShexes <- mutate(aveAgBTShexes, id=as.character(id))
-  aveAgBTShexes$col <- rbPal(aveAgBTShexes$PercBTS)
-  row.names(aveAgBTShexes) <- aveAgBTShexes$id
-  
-  aveAgBTShexesSP <- SpatialPolygonsDataFrame(hexSubset, aveAgBTShexes)
-  
-  #plot(aveAgBTShexesFullSP, col=aveAgBTShexesFullSP$col, add=T, lwd=0.001)
-  return(aveAgBTShexesSP)
-}
 
+##### Create plot of hexes colored by BTS ancestry #####
+# This will be what users will click on when they're interacting with the map
 
-##### Spatial mander data #####
-calCounties <- counties(state="CA", cb=TRUE) # Using package "tigris" to download TIGR data
-calCountiesUTM <- CRS("+proj=utm +zone=10 +datum=WGS84 +units=km +no_defs") %>% spTransform(calCounties, .)
-countiesWithMandersUTM <- calCountiesUTM[calCountiesUTM$COUNTYFP=="001"|calCountiesUTM$COUNTYFP=="009"|calCountiesUTM$COUNTYFP=="013"|calCountiesUTM$COUNTYFP=="019"|calCountiesUTM$COUNTYFP=="033"|calCountiesUTM$COUNTYFP=="039"|calCountiesUTM$COUNTYFP=="041"|calCountiesUTM$COUNTYFP=="043"|calCountiesUTM$COUNTYFP=="047"|calCountiesUTM$COUNTYFP=="053"|calCountiesUTM$COUNTYFP=="067"|calCountiesUTM$COUNTYFP=="069"|calCountiesUTM$COUNTYFP=="077"|calCountiesUTM$COUNTYFP=="079"|calCountiesUTM$COUNTYFP=="083"|calCountiesUTM$COUNTYFP=="085"|calCountiesUTM$COUNTYFP=="087"|calCountiesUTM$COUNTYFP=="095"|calCountiesUTM$COUNTYFP=="097"|calCountiesUTM$COUNTYFP=="099"|calCountiesUTM$COUNTYFP=="101"|calCountiesUTM$COUNTYFP=="107"|calCountiesUTM$COUNTYFP=="113"|calCountiesUTM$COUNTYFP=="029"|calCountiesUTM$COUNTYFP=="081",] # Added Kern and San Mateo County because there are salamanders very close by
-# Make a single polygon that consists of all the salamander counties so that county lines don't break up hexagons later
-manderCountyUTMPolyLabelPts <- getSpPPolygonsLabptSlots(countiesWithMandersUTM) 
-manderCountyUTMIDOneBin <- cut(manderCountyUTMPolyLabelPts[,1], range(manderCountyUTMPolyLabelPts[,1]), include.lowest=TRUE)
-manderCountiesUTMDissolved <- unionSpatialPolygons(countiesWithMandersUTM ,manderCountyUTMIDOneBin)
-
-manderCountiesUTMDissolvedHex <- make_grid(manderCountiesUTMDissolved, cell_area = 2500, clip=TRUE)
-
-overlappingPoints <- genotypeWithLatLongUTM[!is.na(sp::over(genotypeWithLatLongUTM,as(manderCountiesUTMDissolved,"SpatialPolygons"))),]
-
-
-
-# First we'll generate a map where the hexagons are colored by percent BTS ancestry. This will be what
-# users will click on when they're interacting with the map
-
-
-
-
-
-# When a hexagon is clicked on, we want to display the following things:
-# 1) A barplot of samples from across those years (xvalues=1986:2016, yvalues=numSamples)
-# 2) A lineplot where the allele frequencies through time are displayed, with potential BTS alleles in color and 
-#    suspected native alleles shown in grey
-# 3) Some measure of genotyping uncertainty (?)
+## We'll use this to calculate the percentage BTS within the hexagon and color the hex accordingly
 agOverHexNoFillMissing <- function(hexGrid, pointsLayer) {
   rbPal <- colorRamp(c('red','blue'), space = "Lab") # needed to color points based on 0 to 1 values
   
@@ -132,6 +75,39 @@ agOverHexNoFillMissing <- function(hexGrid, pointsLayer) {
   return(aveAgBTShexesSP)
 }
 
+##### Spatial mander data #####
+calCounties <- counties(state="CA", cb=TRUE) # Using package "tigris" to download TIGR data
+calCountiesUTM <- CRS("+proj=utm +zone=10 +datum=WGS84 +units=km +no_defs") %>% spTransform(calCounties, .)
+countiesWithMandersUTM <- calCountiesUTM[calCountiesUTM$COUNTYFP=="001"|calCountiesUTM$COUNTYFP=="009"|calCountiesUTM$COUNTYFP=="013"|calCountiesUTM$COUNTYFP=="019"|calCountiesUTM$COUNTYFP=="033"|calCountiesUTM$COUNTYFP=="039"|calCountiesUTM$COUNTYFP=="041"|calCountiesUTM$COUNTYFP=="043"|calCountiesUTM$COUNTYFP=="047"|calCountiesUTM$COUNTYFP=="053"|calCountiesUTM$COUNTYFP=="067"|calCountiesUTM$COUNTYFP=="069"|calCountiesUTM$COUNTYFP=="077"|calCountiesUTM$COUNTYFP=="079"|calCountiesUTM$COUNTYFP=="083"|calCountiesUTM$COUNTYFP=="085"|calCountiesUTM$COUNTYFP=="087"|calCountiesUTM$COUNTYFP=="095"|calCountiesUTM$COUNTYFP=="097"|calCountiesUTM$COUNTYFP=="099"|calCountiesUTM$COUNTYFP=="101"|calCountiesUTM$COUNTYFP=="107"|calCountiesUTM$COUNTYFP=="113"|calCountiesUTM$COUNTYFP=="029"|calCountiesUTM$COUNTYFP=="081",] # Added Kern and San Mateo County because there are salamanders very close by
+# Make a single polygon that consists of all the salamander counties so that county lines don't break up hexagons later
+manderCountyUTMPolyLabelPts <- getSpPPolygonsLabptSlots(countiesWithMandersUTM) 
+manderCountyUTMIDOneBin <- cut(manderCountyUTMPolyLabelPts[,1], range(manderCountyUTMPolyLabelPts[,1]), include.lowest=TRUE)
+manderCountiesUTMDissolved <- unionSpatialPolygons(countiesWithMandersUTM ,manderCountyUTMIDOneBin)
+
+
+# Read in the genotype data, merge it with the sample metadata, and turn it into a spatial dataframe:
+genotypes <- read.csv("HSEM031-040_and_HSET01.SNPs.sr.q30.passOnly.minGQ20maxMiss50p.erinRename.hasMeta.oneHeaderLine.noSampsOver50pmissing.012", header=F, sep="\t", row.names=1)
+
+# Shorten it up just for testing:
+genotypes <- genotypes[,1:1000] # Shorten it up just for testing:
+
+individuals <- read.csv("HSEM031-040_and_HSET01.SNPs.sr.q30.passOnly.minGQ20maxMiss50p.erinRename.hasMeta.oneHeaderLine.noSampsOver50pmissing.012.indv", header=F)
+loci <- read.csv("HSEM031-040_and_HSET01.SNPs.sr.q30.passOnly.minGQ20maxMiss50p.erinRename.hasMeta.oneHeaderLine.noSampsOver50pmissing.012.pos", header=F)
+
+# Shorten up just for testing:
+loci <- loci$V1[1:1000]
+
+colnames(genotypes) <- loci
+row.names(genotypes) <- individuals$V1
+metaz <- read.csv("allMetaData", sep="\t", header=T)
+genotypeWithLatLong <- merge(genotypes, metaz, by.x=0, by.y="Individual")
+genotypeWithLatLong$Long <- abs(genotypeWithLatLong$Long) * -1 # Make sure that the longitudes are negative
+# Project the samples to UTM:
+coordinates(genotypeWithLatLong) <- c("Long", "Lat")
+proj4string(genotypeWithLatLong) <- CRS("+proj=longlat +datum=WGS84")
+genotypeWithLatLongUTM <- spTransform(genotypeWithLatLong, CRS("+proj=utm +zone=10 +datum=WGS84 +units=km +no_defs"))
+
+
 fiveStarIDs <- c(109680,109695,38114,38115,38116,38117,38118,38119,38120,38121,38122,38123,38124,38125,38126,38127,38128,38129,38130,38131,38132,38133,38134,38135,38137,38139,38140,26869,109693,109696)
 fiveStarRows <- match(fiveStarIDs,rownames(genotypes))
 fiveStarGenos <- genotypes[fiveStarRows,]
@@ -149,7 +125,7 @@ pureBTSfix1names <- names(fiveStarGenos[,(apply(fiveStarGenos,2,function(x) sum(
 fix0CTSfix1BTS <- intersect(pureCTSfix0names,pureBTSfix1names)
 diagnosticGenos <- genotypes[,fix0CTSfix1BTS]
 # Now calculate the percentage BTS ancestry in each individual
-diagnosticGenos$PercBTS <- (apply(diagnosticGenos, 1, function(x) sum(x,na.rm=T)/(length(!is.na(x))*2)))
+diagnosticGenos$PercBTS <- (apply(diagnosticGenos, 1, function(x) (sum(x,na.rm=T)/(sum(!is.na(x))*2))))
 # Now generate the map
 diagnosticGenosWithLatLong <- merge(diagnosticGenos, metaz, by.x=0, by.y="Individual")
 diagnosticGenosWithLatLong$Long <- abs(diagnosticGenosWithLatLong$Long) * -1
@@ -158,14 +134,12 @@ proj4string(diagnosticGenosWithLatLong) <- CRS("+proj=longlat +datum=WGS84")
 diagnosticGenosWithLatLongUTM <- spTransform(diagnosticGenosWithLatLong, CRS("+proj=utm +zone=10 +datum=WGS84 +units=km +no_defs"))
 
 
-
 # Make the hexagon grid
-manderCountiesUTMDissolvedHex <- make_grid(manderCountiesUTMDissolved, cell_area = 250, clip=TRUE)
+manderCountiesUTMDissolvedHex <- make_grid(manderCountiesUTMDissolved, cell_area = 200, clip=TRUE)
 # Calculate the average BTSness in the grid cells and color hexagons accordingly
-
 overlappingPoints <- diagnosticGenosWithLatLongUTM[!is.na(sp::over(diagnosticGenosWithLatLongUTM,as(manderCountiesUTMDissolved,"SpatialPolygons"))),]
 countiesWithMandersHexcolors <- agOverHexNoFillMissing(manderCountiesUTMDissolvedHex,overlappingPoints)
-plot(manderCountiesUTMDissolved, axes=T)
+plot(manderCountiesUTMDissolved, axes=T, main="Hexagons colored by percentage fixed-difference\nancestry for illustrative purposes.")
 plot(calCountiesUTM, lwd=1, add=T)
 #plot(lakesUTM, col="midnightblue", add=T)
 #plot(oceansClippedUTM, col="midnightblue", add=T)
@@ -176,9 +150,6 @@ plot(countiesWithMandersHexcolors, col=rgb(countiesWithMandersHexcolors$col, max
 # Legend and scale bar
 
 
-
-
-
   
 
 
@@ -187,6 +158,15 @@ plot(countiesWithMandersHexcolors, col=rgb(countiesWithMandersHexcolors$col, max
 
 
 ###### Now calculate the allele frequences in each hex through time ######
+
+
+
+# Create the hex overlay grid:
+manderCountiesUTMDissolvedHex <- make_grid(manderCountiesUTMDissolved, cell_area = 2500, clip=TRUE)
+# Make sure we don't have any points outside of grid:
+overlappingPoints <- genotypeWithLatLongUTM[!is.na(sp::over(genotypeWithLatLongUTM,as(manderCountiesUTMDissolved,"SpatialPolygons"))),]
+
+# We'll use this to color points
 rbPal <- colorRamp(c('red','blue'), space = "Lab") # needed to color points based on 0 to 1 values
 
 hexSubset <- manderCountiesUTMDissolvedHex[unique(sp::over(overlappingPoints, manderCountiesUTMDissolvedHex)),]
