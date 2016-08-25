@@ -50,6 +50,34 @@ make_grid <- function(x, cell_diameter, cell_area, clip = FALSE) {
   return(g)
 }
 
+# We'll use this from the R cookbook
+fillNAgaps <- function(x, firstBack=FALSE) {
+  ## NA's in a vector or factor are replaced with last non-NA values
+  ## If firstBack is TRUE, it will fill in leading NA's with the first
+  ## non-NA value. If FALSE, it will not change leading NA's.
+  
+  # If it's a factor, store the level labels and convert to integer
+  lvls <- NULL
+  if (is.factor(x)) {
+    lvls <- levels(x)
+    x    <- as.integer(x)
+  }
+  goodIdx <- !is.na(x)
+  # These are the non-NA values from x only
+  # Add a leading NA or take the first good value, depending on firstBack   
+  if (firstBack)   goodVals <- c(x[goodIdx][1], x[goodIdx])
+  else             goodVals <- c(NA,            x[goodIdx])
+  # Fill the indices of the output vector with the indices pulled from
+  # these offsets of goodVals. Add 1 to avoid indexing to zero.
+  fillIdx <- cumsum(goodIdx)+1
+  x <- goodVals[fillIdx]
+  # If it was originally a factor, convert it back
+  if (!is.null(lvls)) {
+    x <- factor(x, levels=seq_along(lvls), labels=lvls)
+  }
+  x
+}
+
 
 ##### Create plot of hexes colored by BTS ancestry #####
 # This will be what users will click on when they're interacting with the map
@@ -149,8 +177,9 @@ plot(calCountiesUTM, lwd=1, add=T)
 plot(countiesWithMandersHexcolors, col=rgb(countiesWithMandersHexcolors$col, maxColorValue = 255), add=T, lwd=0.001)
 # Legend and scale bar
 
-
-  
+save(countiesWithMandersHexcolors, file="countiesWithMandersHexcolors.RData")
+save(manderCountiesUTMDissolved, file="manderCountiesUTMDissolved.RData")
+save(calCountiesUTM, file="calCountiesUTM.RData")
 
 
 
@@ -175,7 +204,7 @@ agBTShexChar <- mutate(agBTShex,id = as.character(id))
 # the sampling period (eg 1986:2015 or 1986:2016)
 
 # Set it up like array[hexagonID][locusID][year]
-freqThroughTimeArray <- array(dim=c(length(unique(agBTShexChar$id)), length(3:(ncol(agBTShexChar)-2)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), colnames(agBTShexChar)[3:(ncol(agBTShexChar)-2)], min(agBTShexChar$Year):max(agBTShexChar$Year)))
+freqThroughTimeArray <- array(dim=c(length(unique(agBTShexChar$id)), length(3:(ncol(agBTShexChar)-1)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), colnames(agBTShexChar)[3:(ncol(agBTShexChar)-1)], min(agBTShexChar$Year):max(agBTShexChar$Year)))
   
   
   
@@ -204,8 +233,25 @@ for (hexID in 1:length(hexIDs)) {
    }
 }
 
+# We have to deal with the missing values in a sensible way. We want the allele to "appear" on the graph when 
+# the hexagon was first sampled, but we do not want any breaks after that until its final sampling event
 
+for (allele in 1:dim(freqThroughTimeArray)[2]) {
+  for (hex in 1:dim(freqThroughTimeArray)[1]) {
+    # The vector we're working with here is freqThroughTimeArray[hex,allele,], which holds the allele frequency of thenon-ref allele each year from 1986 to 2015
+    firstPresent <- which.min(is.na(freqThroughTimeArray[hex,allele,]))
+  }
+  
+  
+}
 
+for (hex in 1:1) {
+  Sys.sleep(1)
+  plot(1,ylim=c(0,1), xlim=c(1986,2015))
+  for (allele in 1:1000) {
+    lines(1986:2015, fillNAgaps(freqThroughTimeArray[hex,allele,]), main=allele, type="l", col="black")
+  }
+}
 
 
 
