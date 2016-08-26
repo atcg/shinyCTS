@@ -125,7 +125,7 @@ loci <- read.csv("HSEM031-040_and_HSET01.SNPs.sr.q30.passOnly.minGQ20maxMiss50p.
 # Shorten up just for testing:
 loci <- loci$V1[1:1000]
 
-colnames(genotypes) <- loci
+colnames(genotypes) <- loci$V1
 row.names(genotypes) <- individuals$V1
 metaz <- read.csv("allMetaData", sep="\t", header=T)
 genotypeWithLatLong <- merge(genotypes, metaz, by.x=0, by.y="Individual")
@@ -177,9 +177,9 @@ plot(calCountiesUTM, lwd=1, add=T)
 plot(countiesWithMandersHexcolors, col=rgb(countiesWithMandersHexcolors$col, maxColorValue = 255), add=T, lwd=0.001)
 # Legend and scale bar
 
-save(countiesWithMandersHexcolors, file="countiesWithMandersHexcolors.RData")
-save(manderCountiesUTMDissolved, file="manderCountiesUTMDissolved.RData")
-save(calCountiesUTM, file="calCountiesUTM.RData")
+#save(countiesWithMandersHexcolors, file="countiesWithMandersHexcolors.RData")
+#save(manderCountiesUTMDissolved, file="manderCountiesUTMDissolved.RData")
+#save(calCountiesUTM, file="calCountiesUTM.RData")
 
 
 
@@ -205,7 +205,9 @@ agBTShexChar <- mutate(agBTShex,id = as.character(id))
 
 # Set it up like array[hexagonID][locusID][year]
 freqThroughTimeArray <- array(dim=c(length(unique(agBTShexChar$id)), length(3:(ncol(agBTShexChar)-1)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), colnames(agBTShexChar)[3:(ncol(agBTShexChar)-1)], min(agBTShexChar$Year):max(agBTShexChar$Year)))
-  
+
+# Set up like array[hexagonID][year]
+hexSampsPerYear <- array(dim=c(length(unique(agBTShexChar$id)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), min(agBTShexChar$Year):max(agBTShexChar$Year)))   
   
   
 hexIDs <- unique(agBTShexChar$id)
@@ -215,8 +217,10 @@ for (hexID in 1:length(hexIDs)) {
    
    # Now we have to calculate the allele frequency for each year and store it in a vector:
    for (year in 1:length(1986:2015)) {
-     hexFrameYear <- hexFrame[hexFrame$Year==(1985+year),] # The earliest year minus 1 plus the "year" counter
-     for (allele in 1:(ncol(hexFrameYear)-4)) {
+     hexFrameYear <- hexFrame[hexFrame$Year==(min(agBTShexChar$Year)-1+year),] # The earliest year minus 1 plus the "year" counter
+     hexSampsPerYear[hexID,year] <- base::nrow(hexFrameYear)
+     
+   for (allele in 1:(ncol(hexFrameYear)-4)) {
          alleleCounter = allele+2 # The first two columns are not data
        # The first column is the hexagon id, the second is sample ID, the third is the first
        # genotype column, the second to last is the last genotype column, and the last is the year
@@ -233,25 +237,30 @@ for (hexID in 1:length(hexIDs)) {
    }
 }
 
+save(freqThroughTimeArray, file="freqThroughTimeArray.RData")
+save(genotypes, file="genotypes.RData")
+save(hexSampsPerYear, file="hexSampsPerYear.RData")
+
 # We have to deal with the missing values in a sensible way. We want the allele to "appear" on the graph when 
 # the hexagon was first sampled, but we do not want any breaks after that until its final sampling event
 
-for (allele in 1:dim(freqThroughTimeArray)[2]) {
-  for (hex in 1:dim(freqThroughTimeArray)[1]) {
-    # The vector we're working with here is freqThroughTimeArray[hex,allele,], which holds the allele frequency of thenon-ref allele each year from 1986 to 2015
-    firstPresent <- which.min(is.na(freqThroughTimeArray[hex,allele,]))
-  }
-  
-  
-}
+#for (allele in 1:dim(freqThroughTimeArray)[2]) {
+#  for (hex in 1:dim(freqThroughTimeArray)[1]) {
+#    # The vector we're working with here is freqThroughTimeArray[hex,allele,], which holds the allele frequency of thenon-ref allele each year from 1986 to 2015
+#    firstPresent <- which.min(is.na(freqThroughTimeArray[hex,allele,]))
+#  }
+#}
 
-for (hex in 1:1) {
-  Sys.sleep(1)
-  plot(1,ylim=c(0,1), xlim=c(1986,2015))
-  for (allele in 1:1000) {
-    lines(1986:2015, fillNAgaps(freqThroughTimeArray[hex,allele,]), main=allele, type="l", col="black")
-  }
-}
+
+
+
+#for (hex in 1:1) {
+#   Sys.sleep(1)
+#   plot(1,ylim=c(0,1), xlim=c(1986,2015))
+#   for (allele in 1:1000) {
+#     lines(1986:2015, fillNAgaps(freqThroughTimeArray[hex,allele,]), main=allele, type="l", col="black")
+#   }
+#}
 
 
 
