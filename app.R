@@ -27,6 +27,9 @@ load("calCountiesUTM.RData")
 load("freqThroughTimeArray.RData")
 load("genotypes.RData")
 load("hexSampsPerYear.RData")
+load("diagnosticGenos.RData")
+
+diagnosticAlleles <- colnames(diagnosticGenos)
 
 ### Functions
 # Modified from the R cookbook to only fill internal gaps
@@ -78,8 +81,8 @@ ui <- fluidPage(
     column(width=1,
            # Put the checkboxes here for what kind of alleles to light up in color
            checkboxGroupInput("checkGroup", label = h3("Select allele type to color"),
-                              choices = list("All superinvasive SNPs" = 1, "Superinvasive SNP E23C6"=2, "Superinvasive SNP E12C11"=3, 
-                                             "Superinvasive SNP E6E11"=4, "All putative BTS based\non reference pures"=5),selected=1)
+                              choices = list("All SI SNPs" = 1, "SI-E23C6"=2, "SI-E12C11"=3, 
+                                             "SI-E6E11"=4, "All diagnostic BTS alleles based on reference pures"=5),selected=1)
     ),
     column(width=6,
            plotOutput("alleleFreq", height=900))
@@ -114,7 +117,7 @@ server <- function(input, output) {
     res
   })
   
-  output$value <- renderPrint({input$checkGroup })
+  output$value <- renderPrint({input$checkGroup})
   
 
   output$brush_info <- renderPrint({
@@ -130,7 +133,7 @@ server <- function(input, output) {
 #    } else if (brushedPoints(polyz, input$map_brush, xvar="polygonXcoords", yvar="polygonYcoords")$polygonNames > 0) {
 #      selectedPoints <- brushedPoints(polyz, input$map_brush, xvar="polygonXcoords", yvar="polygonYcoords")$polygonNames
 #    }
-    plot(manderCountiesUTMDissolved, axes=T, main="Select hexagons with mouse.")
+    plot(manderCountiesUTMDissolved, axes=T, main="Select hexagons with mouse.", cex.main=2)
     plot(countiesWithMandersHexcolors, col=rgb(countiesWithMandersHexcolors$col, maxColorValue = 255), add=T, lwd=0.001)
     #plot(countiesWithMandersHexcolors[match(countiesWithMandersHexcolors$id, IDZ)], lwd=2)
     plot(calCountiesUTM, add=T)
@@ -146,36 +149,49 @@ server <- function(input, output) {
       # Plot the allele freq through time here
       pointedIDs <- as.character(selected_line()$polygonNames)
       brushPointIDs <- as.character(brushedPoints(polyz, input$map_brush, xvar="polygonXcoords", yvar="polygonYcoords")$polygonNames)
-      cat(pointedIDs)
-      cat(brushPointIDs)
+      #cat(pointedIDs)
+      #cat(brushPointIDs)
+      
+      # Save which IDs we want to print in green
+      green1 <- 
+      green2 <- 
+      green3 <-
+      green4 <-
+      green5 <- diagnosticAlleles # This is a character vector of diagnostic allele names
+      
+      
+      #(input$checkGroup)
+      
+      
       if (length(pointedIDs) > 0) {
-        plot(1,ylim=c(0,1), xlim=c(1986,2015), main="Change in allele frequency over time in selected hexagons.\nInternal unsampled years set to previously sampled year.")
-        for (allele in 1:length(freqThroughTimeArray[1,,1])) {
-          # Only one hexagon so we don't need to calculate the allele frequency across hexagons
-          lines(1986:2015, fillInternalNAs(freqThroughTimeArray[pointedIDs,allele,]), main=allele, type="l", col="black")
-          # Now handle the colored lines
-        }
+        plot(1,type="n", ylim=c(0,1), xlim=c(1986,2015), main="Change in allele frequency over time in selected hexagons.\nInternal unsampled years set to previously sampled year.", xlab="Year", ylab="Allele Frequency")
+        lapply(names(freqThroughTimeArray[1,,1]), FUN = function(x) {lines(1986:2015, fillInternalNAs(freqThroughTimeArray[pointedIDs,x,]), type="l", col="black")})
+        # Now handle the colored lines
+        lapply(green5, FUN = function(x) {lines(1986:2015, fillInternalNAs(freqThroughTimeArray[pointedIDs,x,]), type="l", lwd=2, col="green")})
+
+        
       } else if (length(brushPointIDs) > 0) {
-        plot(1,ylim=c(0,1), xlim=c(1986,2015), main="Change in allele frequency over time in selected hexagons.\nInternal unsampled years set to previously sampled year.")
+        plot(1, type="n", ylim=c(0,1), xlim=c(1986,2015), main="Change in allele frequency over time in selected hexagons.\nInternal unsampled years set to previously sampled year.", xlab="Year", ylab="Allele Frequency")
+        
         if (length(brushPointIDs) == 1) {
-          for (allele in 1:length(freqThroughTimeArray[1,,1])) {
-            lapply(brushPointIDs, FUN = function(x) {lines(1986:2015, fillInternalNAs(freqThroughTimeArray[x,allele,]), type="l", col="black")})
-            # Now handle the colored lines
-          } else { # More than one brushedPoint hexagon
-            # Calculate frequencies across all selected hexagons:
-            hexSampsPerYear[hexID,year] # This is the number of samples
-            
-            
-          }
+          lapply(names(freqThroughTimeArray[1,,1]), FUN = function(x) {lines(1986:2015, fillInternalNAs(freqThroughTimeArray[brushPointIDs,x,]), type="l", col="black")})
+          # Now handle the colored lines.
+          # For instance: ((freqThroughTimeArray[1,"39457_contig100976|SNX13|3_contig100976|SNX13|3\t361",1])) is one allele
+          lapply(green5, FUN = function(x) {lines(1986:2015, fillInternalNAs(freqThroughTimeArray[brushPointIDs,x,]), type="l", lwd=2, col="green")})
+
+        } else { # More than one brushedPoint hexagon
+            # Calculate and plot the frequencies across all selected hexagons:
+            lapply(names(freqThroughTimeArray[1,,1]), FUN = function(x) {lines(1986:2015, fillInternalNAs(colSums(freqThroughTimeArray[brushPointIDs,x,]*hexSampsPerYear[brushPointIDs,x,], na.rm=TRUE)/colSums(hexSampsPerYear[brushPointIDs,x,], na.rm=TRUE)), type="l", col="black")})
+          
+            lapply(green5, FUN = function(x) {lines(1986:2015, fillInternalNAs(colSums(freqThroughTimeArray[brushPointIDs,x,]*hexSampsPerYear[brushPointIDs,x,], na.rm=TRUE)/colSums(hexSampsPerYear[brushPointIDs,x,], na.rm=TRUE)), type="l", lwd=2, col="green")})
         }
+    } else { # This means that no polygons have been selected yet, so we'll just make an empty plot with axis labels
+        plot(1,type="n", ylim=c(0,1), xlim=c(1986,2015), main="Change in allele frequency over time in selected hexagons.\nInternal unsampled years set to previously sampled year.", xlab="Year", ylab="Allele Frequency")
       }
     })
 }
 
 shinyApp(ui = ui, server=server)
-
-
-
 
 
 

@@ -50,38 +50,9 @@ make_grid <- function(x, cell_diameter, cell_area, clip = FALSE) {
   return(g)
 }
 
-# We'll use this from the R cookbook
-fillNAgaps <- function(x, firstBack=FALSE) {
-  ## NA's in a vector or factor are replaced with last non-NA values
-  ## If firstBack is TRUE, it will fill in leading NA's with the first
-  ## non-NA value. If FALSE, it will not change leading NA's.
-  
-  # If it's a factor, store the level labels and convert to integer
-  lvls <- NULL
-  if (is.factor(x)) {
-    lvls <- levels(x)
-    x    <- as.integer(x)
-  }
-  goodIdx <- !is.na(x)
-  # These are the non-NA values from x only
-  # Add a leading NA or take the first good value, depending on firstBack   
-  if (firstBack)   goodVals <- c(x[goodIdx][1], x[goodIdx])
-  else             goodVals <- c(NA,            x[goodIdx])
-  # Fill the indices of the output vector with the indices pulled from
-  # these offsets of goodVals. Add 1 to avoid indexing to zero.
-  fillIdx <- cumsum(goodIdx)+1
-  x <- goodVals[fillIdx]
-  # If it was originally a factor, convert it back
-  if (!is.null(lvls)) {
-    x <- factor(x, levels=seq_along(lvls), labels=lvls)
-  }
-  x
-}
-
 
 ##### Create plot of hexes colored by BTS ancestry #####
-# This will be what users will click on when they're interacting with the map
-
+## This will be what users will click on when they're interacting with the map
 ## We'll use this to calculate the percentage BTS within the hexagon and color the hex accordingly
 agOverHexNoFillMissing <- function(hexGrid, pointsLayer) {
   rbPal <- colorRamp(c('red','blue'), space = "Lab") # needed to color points based on 0 to 1 values
@@ -125,7 +96,7 @@ loci <- read.csv("HSEM031-040_and_HSET01.SNPs.sr.q30.passOnly.minGQ20maxMiss50p.
 # Shorten up just for testing:
 loci <- loci$V1[1:1000]
 
-colnames(genotypes) <- loci$V1
+colnames(genotypes) <- loci
 row.names(genotypes) <- individuals$V1
 metaz <- read.csv("allMetaData", sep="\t", header=T)
 genotypeWithLatLong <- merge(genotypes, metaz, by.x=0, by.y="Individual")
@@ -152,6 +123,8 @@ pureBTSfix1names <- names(fiveStarGenos[,(apply(fiveStarGenos,2,function(x) sum(
 
 fix0CTSfix1BTS <- intersect(pureCTSfix0names,pureBTSfix1names)
 diagnosticGenos <- genotypes[,fix0CTSfix1BTS]
+# We'll save these IDs for the plot highlighting:
+save(diagnosticGenos, file="diagnosticGenos.RData")
 # Now calculate the percentage BTS ancestry in each individual
 diagnosticGenos$PercBTS <- (apply(diagnosticGenos, 1, function(x) (sum(x,na.rm=T)/(sum(!is.na(x))*2))))
 # Now generate the map
@@ -207,7 +180,8 @@ agBTShexChar <- mutate(agBTShex,id = as.character(id))
 freqThroughTimeArray <- array(dim=c(length(unique(agBTShexChar$id)), length(3:(ncol(agBTShexChar)-1)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), colnames(agBTShexChar)[3:(ncol(agBTShexChar)-1)], min(agBTShexChar$Year):max(agBTShexChar$Year)))
 
 # Set up like array[hexagonID][year]
-hexSampsPerYear <- array(dim=c(length(unique(agBTShexChar$id)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), min(agBTShexChar$Year):max(agBTShexChar$Year)))   
+#hexSampsPerYear <- array(dim=c(length(unique(agBTShexChar$id)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), min(agBTShexChar$Year):max(agBTShexChar$Year)))
+hexSampsPerYear <- array(dim=c(length(unique(agBTShexChar$id)), length(3:(ncol(agBTShexChar)-1)), length(min(agBTShexChar$Year):max(agBTShexChar$Year))), dimnames=list(unique(agBTShexChar$id), colnames(agBTShexChar)[3:(ncol(agBTShexChar)-1)], min(agBTShexChar$Year):max(agBTShexChar$Year)))
   
   
 hexIDs <- unique(agBTShexChar$id)
@@ -218,7 +192,7 @@ for (hexID in 1:length(hexIDs)) {
    # Now we have to calculate the allele frequency for each year and store it in a vector:
    for (year in 1:length(1986:2015)) {
      hexFrameYear <- hexFrame[hexFrame$Year==(min(agBTShexChar$Year)-1+year),] # The earliest year minus 1 plus the "year" counter
-     hexSampsPerYear[hexID,year] <- base::nrow(hexFrameYear)
+     #hexSampsPerYear[hexID,year] <- base::nrow(hexFrameYear)
      
    for (allele in 1:(ncol(hexFrameYear)-4)) {
          alleleCounter = allele+2 # The first two columns are not data
@@ -226,13 +200,14 @@ for (hexID in 1:length(hexIDs)) {
        # genotype column, the second to last is the last genotype column, and the last is the year
        if (length(hexFrameYear[,alleleCounter]) == 0) {
          freqThroughTimeArray[hexID,allele,year] <- NA
+         hexSampsPerYear[hexID,allele,year] <- NA # Might make more sense if these are 0 instead
        } else {
          numGenotypesCalled <- sum(2 * !is.na(hexFrameYear[,alleleCounter]))
          numAlternateAlleles <- sum(hexFrameYear[,alleleCounter])
          altAlleleFreq <- numAlternateAlleles / numGenotypesCalled
          freqThroughTimeArray[hexID,allele,year] <- altAlleleFreq
+         hexSampsPerYear[hexID,allele,year] <- numGenotypesCalled / 2 # This is the number of samples that aren't NA for that allele and year
        }
-       
      }
    }
 }
@@ -240,27 +215,6 @@ for (hexID in 1:length(hexIDs)) {
 save(freqThroughTimeArray, file="freqThroughTimeArray.RData")
 save(genotypes, file="genotypes.RData")
 save(hexSampsPerYear, file="hexSampsPerYear.RData")
-
-# We have to deal with the missing values in a sensible way. We want the allele to "appear" on the graph when 
-# the hexagon was first sampled, but we do not want any breaks after that until its final sampling event
-
-#for (allele in 1:dim(freqThroughTimeArray)[2]) {
-#  for (hex in 1:dim(freqThroughTimeArray)[1]) {
-#    # The vector we're working with here is freqThroughTimeArray[hex,allele,], which holds the allele frequency of thenon-ref allele each year from 1986 to 2015
-#    firstPresent <- which.min(is.na(freqThroughTimeArray[hex,allele,]))
-#  }
-#}
-
-
-
-
-#for (hex in 1:1) {
-#   Sys.sleep(1)
-#   plot(1,ylim=c(0,1), xlim=c(1986,2015))
-#   for (allele in 1:1000) {
-#     lines(1986:2015, fillNAgaps(freqThroughTimeArray[hex,allele,]), main=allele, type="l", col="black")
-#   }
-#}
 
 
 
